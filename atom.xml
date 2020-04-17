@@ -5,9 +5,9 @@
   <subtitle>技术笔记</subtitle>
   <link href="/atom.xml" rel="self"/>
   
-  <link href="http://sevennight.cc/"/>
-  <updated>2019-01-01T04:09:41.346Z</updated>
-  <id>http://sevennight.cc/</id>
+  <link href="https://sevennight.cc/"/>
+  <updated>2020-04-17T17:47:12.707Z</updated>
+  <id>https://sevennight.cc/</id>
   
   <author>
     <name>sevennight</name>
@@ -17,9 +17,61 @@
   <generator uri="http://hexo.io/">Hexo</generator>
   
   <entry>
+    <title>centos7 搭建 openvpn 服务器（使用账号和密码方式）</title>
+    <link href="https://sevennight.cc/2020/04/18/centos7_install_open_xxx.html"/>
+    <id>https://sevennight.cc/2020/04/18/centos7_install_open_xxx.html</id>
+    <published>2020-04-17T17:45:00.000Z</published>
+    <updated>2020-04-17T17:47:12.707Z</updated>
+    
+    <content type="html"><![CDATA[<p>openvpn是一款提供与企业与个人之间创建虚拟专用网络安全数据传输通道的软件，可以搭建类似局域网的专用通道</p><p>最近因公司需要远程访问客户的一种设备，但他们不想公开开放，但他们设备有一个openvpn配置项，所以就研究了下，搭建完记录下</p><p>环境：<br>openvpn服务器系统版本 CentOS Linux release 7.6.1810 (Core)<br>客户端连接软件安装在windows10</p><p>搭建及要实现的内容如下：<br>1、server端和client端的安装和配置<br>2、配置防火墙及路由转发<br>3、配置账号密码验证，给账号分配固定IP，且用户连接与断开实时调用后续处理脚本</p><h2 id="一、制作证书"><a href="#一、制作证书" class="headerlink" title="一、制作证书"></a>一、制作证书</h2><p>安装<code>easy-rsa</code>和<code>openvpn</code>软件包</p><figure class="highlight cmake"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">yum <span class="keyword">install</span> openvpn easy-rsa</span><br></pre></td></tr></table></figure><p>复制相关文件</p><figure class="highlight dts"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//注意easy-rsa的版本号，你的有可能不一样</span></span><br><span class="line">cp <span class="meta-keyword">/usr/</span>share<span class="meta-keyword">/doc/</span>easy-rsa<span class="number">-3.0</span><span class="number">.7</span>/vars.example <span class="meta-keyword">/etc/</span>openvpn<span class="meta-keyword">/easy-rsa/</span>vars</span><br><span class="line">cp -r /usr</span><br></pre></td></tr></table></figure><p>/share/easy-rsa/3.0.7/* /etc/openvpn/easy-rsa/</p><p>编辑vars文件，修改如下选项（此步骤为可选操作，使用默认的也是可以的）</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">vi /etc/openvpn/easy-rsa/vars</span><br><span class="line"></span><br><span class="line"><span class="meta">#</span><span class="bash">set_var EASYRSA_REQ_COUNTRY    <span class="string">"US"</span></span></span><br><span class="line"><span class="meta">#</span><span class="bash">set_var EASYRSA_REQ_PROVINCE   <span class="string">"California"</span></span></span><br><span class="line"><span class="meta">#</span><span class="bash">set_var EASYRSA_REQ_CITY       <span class="string">"San Francisco"</span></span></span><br><span class="line"><span class="meta">#</span><span class="bash">set_var EASYRSA_REQ_ORG        <span class="string">"Copyleft Certificate Co"</span></span></span><br><span class="line"><span class="meta">#</span><span class="bash">set_var EASYRSA_REQ_EMAIL      <span class="string">"me@example.net"</span></span></span><br><span class="line"><span class="meta">#</span><span class="bash">set_var EASYRSA_REQ_OU         <span class="string">"My Organizational Unit"</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#</span><span class="bash">修改公司、邮箱、国家等信息，大约250行附近</span></span><br></pre></td></tr></table></figure><p>初始化证书目录</p><figure class="highlight jboss-cli"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">cd</span> <span class="string">/etc/openvpn/easy-rsa/</span></span><br><span class="line"><span class="string">./easyrsa</span> init-pki</span><br></pre></td></tr></table></figure><p>创建CA根证书</p><figure class="highlight jboss-cli"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="string">./easyrsa</span> build-ca</span><br><span class="line"><span class="comment">#需输入两次密码和一次名称，或者不设置直接都回车</span></span><br></pre></td></tr></table></figure><p>创建服务器端证书，执行命令一路回车</p><figure class="highlight routeros"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">./easyrsa gen-req<span class="built_in"> server </span>nopass</span><br><span class="line"><span class="comment">#一路回车即可</span></span><br></pre></td></tr></table></figure><p>签署服务器端证书</p><figure class="highlight routeros"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">./easyrsa sign<span class="built_in"> server </span>server</span><br><span class="line"><span class="comment"># 回车后输入yes，还需输入之前创建CA根证书设置的密码，如未设置直接回车</span></span><br></pre></td></tr></table></figure><p>生成加密交换时的Diffie-Hellman文件，会生成一个pem后缀文件，生成过程比较慢</p><figure class="highlight jboss-cli"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="string">./easyrsa</span> gen-dh</span><br></pre></td></tr></table></figure><h2 id="2、配置openvpn服务端"><a href="#2、配置openvpn服务端" class="headerlink" title="2、配置openvpn服务端"></a>2、配置openvpn服务端</h2><figure class="highlight dts"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line">vi <span class="meta-keyword">/etc/</span>openvpn/server.conf</span><br><span class="line"></span><br><span class="line"><span class="meta"># 以下配置可直接复制</span></span><br><span class="line"></span><br><span class="line">port <span class="number">1194</span></span><br><span class="line">proto tcp</span><br><span class="line">dev tun</span><br><span class="line"></span><br><span class="line"><span class="meta"># 相关证书配置路径</span></span><br><span class="line">ca <span class="meta-keyword">/etc/</span>openvpn<span class="meta-keyword">/easy-rsa/</span>pki/ca.crt</span><br><span class="line">cert <span class="meta-keyword">/etc/</span>openvpn<span class="meta-keyword">/easy-rsa/</span>pki<span class="meta-keyword">/issued/</span>server.crt</span><br><span class="line">key <span class="meta-keyword">/etc/</span>openvpn<span class="meta-keyword">/easy-rsa/</span>pki<span class="meta-keyword">/private/</span>server.key</span><br><span class="line">dh <span class="meta-keyword">/etc/</span>openvpn<span class="meta-keyword">/easy-rsa/</span>pki/dh.pem</span><br><span class="line"></span><br><span class="line">server <span class="number">10.8</span><span class="number">.0</span><span class="number">.0</span> <span class="number">255.255</span><span class="number">.255</span><span class="number">.0</span>    <span class="meta"># 虚拟网段</span></span><br><span class="line"></span><br><span class="line">client-to-client    <span class="meta"># 客户端互通</span></span><br><span class="line">keepalive <span class="number">10</span> <span class="number">120</span></span><br><span class="line">comp-lzo</span><br><span class="line"></span><br><span class="line">cipher AES<span class="number">-256</span>-CBC</span><br><span class="line">persist-key</span><br><span class="line">persist-tun</span><br><span class="line"></span><br><span class="line">status logs/openvpn-status.log  <span class="meta"># 状态日志路径</span></span><br><span class="line">log-append logs/openvpn.log     <span class="meta"># 运行日志</span></span><br><span class="line">verb <span class="number">3</span>                          <span class="meta"># 调试信息级别</span></span><br><span class="line"></span><br><span class="line">client-config-dir <span class="meta-keyword">/etc/</span>openvpn/ccd  <span class="meta"># 固定IP分配配置目录，见下面讲解</span></span><br><span class="line"></span><br><span class="line">script-security <span class="number">2</span></span><br><span class="line">auth-user-pass-verify <span class="meta-keyword">/etc/</span>openvpn/checkpwd.sh via-file    <span class="meta"># 密码验证脚本</span></span><br><span class="line">username-as-common-name</span><br><span class="line">verify-client-cert none</span><br><span class="line"></span><br><span class="line"><span class="meta"># client-connect /etc/openvpn/scripts/connect.sh           # 新连接连接时执行脚本</span></span><br><span class="line"><span class="meta"># client-disconnect /etc/openvpn/scripts/disconnect.sh     # 有连接退出时执行脚本</span></span><br></pre></td></tr></table></figure><p>创建用户账号和密码的配置</p><figure class="highlight tcl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">touch /etc/openvpn/<span class="keyword">pwd</span>-<span class="keyword">file</span></span><br><span class="line">vi /etc/openvpn/<span class="keyword">pwd</span>-<span class="keyword">file</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 文件内容为</span></span><br><span class="line"><span class="comment"># 每一行代表一个用户，账号和密码以空格分开</span></span><br><span class="line">client1 <span class="number">123456</span></span><br><span class="line">client2 <span class="number">123456</span></span><br><span class="line">client3 <span class="number">123456</span></span><br></pre></td></tr></table></figure><p>给用户client1分配固定IP为10.8.0.57</p><figure class="highlight dts"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">mkdir <span class="meta-keyword">/etc/</span>openvpn/ccd</span><br><span class="line">cd  <span class="meta-keyword">/etc/</span>openvpn/ccd</span><br><span class="line"></span><br><span class="line"><span class="meta"># 文件名称需以用户账号命名</span></span><br><span class="line">touch <span class="meta-keyword">/etc/</span>openvpn<span class="meta-keyword">/ccd/</span>client1</span><br><span class="line">vi <span class="meta-keyword">/etc/</span>openvpn<span class="meta-keyword">/ccd/</span>client1</span><br><span class="line"></span><br><span class="line"><span class="meta">#文件内容</span></span><br><span class="line">ifconfig-push <span class="number">10.8</span><span class="number">.0</span><span class="number">.57</span> <span class="number">10.8</span><span class="number">.0</span><span class="number">.58</span></span><br></pre></td></tr></table></figure><p>创建密码验证脚本<br><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line">touch /etc/openvpn/checkpwd.sh</span><br><span class="line">chmod +x checkpwd.sh</span><br><span class="line">vi /etc/openvpn/checkpwd.sh</span><br><span class="line"></span><br><span class="line"><span class="comment"># 脚本内容</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line"></span><br><span class="line">PASSFILE=<span class="string">"/etc/openvpn/pwd-file"</span></span><br><span class="line">LOG_FILE=<span class="string">"/etc/openvpn/logs/openvpn-password.log"</span></span><br><span class="line">TIME_STAMP=`date <span class="string">"+%Y-%m-%d %T"</span>`</span><br><span class="line"></span><br><span class="line"><span class="built_in">readarray</span> -t lines &lt; <span class="variable">$1</span></span><br><span class="line">username=<span class="variable">$&#123;lines[0]&#125;</span></span><br><span class="line">password=<span class="variable">$&#123;lines[1]&#125;</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> [ ! -r <span class="string">"<span class="variable">$&#123;PASSFILE&#125;</span>"</span> ]; <span class="keyword">then</span></span><br><span class="line">  <span class="built_in">echo</span> <span class="string">"<span class="variable">$&#123;TIME_STAMP&#125;</span>: Could not open password file \"<span class="variable">$&#123;PASSFILE&#125;</span>\" for reading."</span> &gt;&gt; <span class="variable">$&#123;LOG_FILE&#125;</span></span><br><span class="line">  <span class="built_in">exit</span> 1</span><br><span class="line"><span class="keyword">fi</span></span><br><span class="line"></span><br><span class="line">CORRECT_PASSWORD=`awk <span class="string">'!/^;/&amp;&amp;!/^#/&amp;&amp;$1=="'</span><span class="variable">$&#123;username&#125;</span><span class="string">'"&#123;print $2;exit&#125;'</span> <span class="variable">$&#123;PASSFILE&#125;</span>`</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> [ <span class="string">"<span class="variable">$&#123;CORRECT_PASSWORD&#125;</span>"</span> = <span class="string">""</span> ]; <span class="keyword">then</span></span><br><span class="line">  <span class="built_in">echo</span> <span class="string">"<span class="variable">$&#123;TIME_STAMP&#125;</span>: User does not exist: username=\"<span class="variable">$&#123;username&#125;</span>\", password=\"<span class="variable">$&#123;password&#125;</span>\"."</span> &gt;&gt; <span class="variable">$&#123;LOG_FILE&#125;</span></span><br><span class="line">  <span class="built_in">exit</span> 1</span><br><span class="line"><span class="keyword">fi</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> [ <span class="string">"<span class="variable">$&#123;password&#125;</span>"</span> = <span class="string">"<span class="variable">$&#123;CORRECT_PASSWORD&#125;</span>"</span> ]; <span class="keyword">then</span></span><br><span class="line">  <span class="built_in">echo</span> <span class="string">"<span class="variable">$&#123;TIME_STAMP&#125;</span>: Successful authentication: username=\"<span class="variable">$&#123;username&#125;</span>\"."</span> &gt;&gt; <span class="variable">$&#123;LOG_FILE&#125;</span></span><br><span class="line">  <span class="built_in">exit</span> 0</span><br><span class="line"><span class="keyword">fi</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">echo</span> <span class="string">"<span class="variable">$&#123;TIME_STAMP&#125;</span>: Incorrect password: username=\"<span class="variable">$&#123;username&#125;</span>\", password=\"<span class="variable">$&#123;password&#125;</span>\"."</span> &gt;&gt; <span class="variable">$&#123;LOG_FILE&#125;</span></span><br><span class="line"><span class="built_in">exit</span> 1</span><br></pre></td></tr></table></figure></p><p>（可选配置）争对client-connect和client-disconnect这两个配置这里就不多说了，可能对大多数人用处不大，我的业务是有用户连接上了，就调用脚本向远程http接口通知我们系统有客户连接上了然后去做业务处理的，我把大致脚本发出来</p><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">connect.sh</span><br><span class="line"></span><br><span class="line"><span class="comment"># 脚本内容</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">echo</span> <span class="string">" 发现新连接 &gt;&gt;&gt;&gt;&gt; 账号: <span class="variable">$&#123;common_name&#125;</span> 分配IP: <span class="variable">$&#123;trusted_ip&#125;</span> 连接者IP: <span class="variable">$&#123;ifconfig_pool_remote_ip&#125;</span>"</span></span><br><span class="line"><span class="comment"># 上报到远程接口，使用curl等工具...</span></span><br><span class="line"><span class="built_in">exit</span> 0</span><br></pre></td></tr></table></figure><p>开启内核路由转发功能</p><figure class="highlight ruby"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">echo <span class="string">"net.ipv4.ip_forward = 1"</span> <span class="meta">&gt;&gt;</span>/etc/sysctl.conf</span><br><span class="line">sysctl -p</span><br></pre></td></tr></table></figure><p>配置防火墙</p><figure class="highlight dockerfile"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 开放tcp 1194端口</span></span><br><span class="line">firewall-<span class="keyword">cmd</span><span class="bash"> --zone=public --add-port=1194/tcp --permanent</span></span><br><span class="line"><span class="bash"><span class="comment"># 重新加载防火墙使其生效</span></span></span><br><span class="line"><span class="bash">firewall-cmd --reload</span></span><br><span class="line"><span class="bash"><span class="comment"># 查看防火墙规则是否配置成功</span></span></span><br><span class="line"><span class="bash">firewall-cmd --list-all</span></span><br></pre></td></tr></table></figure><p>启动openvpn服务器</p><figure class="highlight axapta"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">openvpn /etc/openvpn/<span class="keyword">server</span>.conf &amp;</span><br><span class="line">或者</span><br><span class="line">systemctl start openvpn@<span class="keyword">server</span>    <span class="meta"># 启动服务</span></span><br><span class="line">systemctl status openvpn@<span class="keyword">server</span>   <span class="meta"># 查看状态</span></span><br><span class="line">systemctl stop openvpn@<span class="keyword">server</span>     <span class="meta"># 停止服务</span></span><br></pre></td></tr></table></figure><p>执行start启动服务命令后，使用status命令查询状态，如果<code>Active: failed</code>，请到<code>/etc/openvpn/logs/openvpn.log</code>目录下查看日志，基本打印的错误消息挺全的，可借此排查错误，另外记得如果开启了防火墙要把openvpn配置的端口开放，并且有的服务商还在他们自己控制台有安全策略，如果服务启动了连接很久都连接不上可以往这些方面思考一下</p><h2 id="配置openvpn客户端"><a href="#配置openvpn客户端" class="headerlink" title="配置openvpn客户端"></a>配置openvpn客户端</h2><p>创建配置文件</p><figure class="highlight dts"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">cd <span class="meta-keyword">/root/</span></span><br><span class="line">touch client.ovpn</span><br><span class="line">vi <span class="meta-keyword">/etc/</span>openvpn<span class="meta-keyword">/easy-rsa/</span>pki/ca.crt    <span class="meta"># 复制所有内容</span></span><br><span class="line">vi <span class="meta-keyword">/root/</span>client.ovpn </span><br><span class="line"></span><br><span class="line"><span class="meta"># client.ovpn文件内容</span></span><br><span class="line">client </span><br><span class="line">dev tun </span><br><span class="line">proto tcp </span><br><span class="line">remote <span class="number">193.112</span>.xxx.xxx <span class="number">1194</span>    <span class="meta"># openvpn远程服务器的IP和端口</span></span><br><span class="line">resolv-retry infinite </span><br><span class="line">nobind </span><br><span class="line">persist-key </span><br><span class="line">persist-tun </span><br><span class="line">cipher AES<span class="number">-256</span>-CBC </span><br><span class="line">comp-lzo </span><br><span class="line">verb <span class="number">3</span> </span><br><span class="line">auth-user-pass     <span class="meta"># 添加此配置客户端连接时会弹出密码框</span></span><br><span class="line"></span><br><span class="line"><span class="meta"># 证书配置</span></span><br><span class="line"><span class="params">&lt;ca&gt;</span></span><br><span class="line"><span class="meta">#此处粘贴刚才在/etc/openvpn/easy-rsa/pki/ca.crt复制的内容</span></span><br><span class="line"><span class="params">&lt;/ca&gt;</span></span><br></pre></td></tr></table></figure><p>然后导出<code>client.ovpn</code>文件，导入到客户端里进行连接</p><p>openvpn客户端官方下载连接<br><a href="https://openvpn.net/community-downloads/" target="_blank" rel="noopener">https://openvpn.net/community-downloads/</a></p><p>下载安装时注意如果弹出要安装<code>TAP-Windows Provider V9</code>的东西一定要通过，不然安装成功了，连接时还是无法连接</p><p>客户端<br><img src="/image/1587143697591.png" alt="Alt text"></p><p>启动客户端软件，然后在任务栏有一个像电脑显示器的小图标右键选择导入配置文件<br><img src="/image/1587143802423.png" alt="Alt text"></p><p>连接<br><img src="/image/1587143950209.png" alt="Alt text"></p><p>在弹出的密码框里输入我们在服务端<code>pwd-file</code>文件里配置的用户名和密码<br><img src="/image/1587144012062.png" alt="Alt text"></p><p>连接成功，且IP也是成功分配到我们配置的IP<br><img src="/image/1587144242918.png" alt="Alt text"></p><p>一些有帮助的文章：<br><a href="https://i4t.com/4481.html" target="_blank" rel="noopener">https://i4t.com/4481.html</a><br><a href="https://my.oschina.net/stache/blog/1512610" target="_blank" rel="noopener">https://my.oschina.net/stache/blog/1512610</a><br><a href="http://blog.leanote.com/post/mrnice/openvpn%E6%90%AD%E5%BB%BA" target="_blank" rel="noopener">http://blog.leanote.com/post/mrnice/openvpn%E6%90%AD%E5%BB%BA</a></p>]]></content>
+    
+    <summary type="html">
+    
+      
+      
+        &lt;p&gt;openvpn是一款提供与企业与个人之间创建虚拟专用网络安全数据传输通道的软件，可以搭建类似局域网的专用通道&lt;/p&gt;
+&lt;p&gt;最近因公司需要远程访问客户的一种设备，但他们不想公开开放，但他们设备有一个openvpn配置项，所以就研究了下，搭建完记录下&lt;/p&gt;
+&lt;p&gt;环境：&lt;b
+      
+    
+    </summary>
+    
+      <category term="linux" scheme="https://sevennight.cc/categories/linux/"/>
+    
+    
+      <category term="linux" scheme="https://sevennight.cc/tags/linux/"/>
+    
+      <category term="openvpn" scheme="https://sevennight.cc/tags/openvpn/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>有感</title>
+    <link href="https://sevennight.cc/2020/04/17/yougan.html"/>
+    <id>https://sevennight.cc/2020/04/17/yougan.html</id>
+    <published>2020-04-16T16:00:00.000Z</published>
+    <updated>2020-04-17T13:58:26.463Z</updated>
+    
+    <content type="html"><![CDATA[<p>打开博客，发现好久没有写过博客了，本来有很多东西在脑海里的，但有很多事整理起来费劲，有些是知识点流程需要搭建环境繁杂渐渐地就懒得写了，但慢慢的这些记忆在某一天就消失了，只记得曾经知道过那么个东西，如果后面遇到问题了，也同样能通过google再次找回来，但当别人问我某个问题的时候，我才发现，没有深深巩固的记忆，那种知道他，但脑海里实在很模糊的感觉真的很难受，所以以后还是坚持把写博客的习惯找回来</p><p>做一行，爱一行，即使是不爱，也要做好</p>]]></content>
+    
+    <summary type="html">
+    
+      
+      
+        &lt;p&gt;打开博客，发现好久没有写过博客了，本来有很多东西在脑海里的，但有很多事整理起来费劲，有些是知识点流程需要搭建环境繁杂渐渐地就懒得写了，但慢慢的这些记忆在某一天就消失了，只记得曾经知道过那么个东西，如果后面遇到问题了，也同样能通过google再次找回来，但当别人问我某个问题的
+      
+    
+    </summary>
+    
+      <category term="路上" scheme="https://sevennight.cc/categories/%E8%B7%AF%E4%B8%8A/"/>
+    
+    
+  </entry>
+  
+  <entry>
     <title>Hexo简洁主题推荐分享</title>
-    <link href="http://sevennight.cc/2016/10/25/hexo_theme_maupassant_share.html"/>
-    <id>http://sevennight.cc/2016/10/25/hexo_theme_maupassant_share.html</id>
+    <link href="https://sevennight.cc/2016/10/25/hexo_theme_maupassant_share.html"/>
+    <id>https://sevennight.cc/2016/10/25/hexo_theme_maupassant_share.html</id>
     <published>2016-10-25T01:30:01.000Z</published>
     <updated>2019-01-01T04:09:41.346Z</updated>
     
@@ -32,17 +84,17 @@
     
     </summary>
     
-      <category term="走走看看" scheme="http://sevennight.cc/categories/%E8%B5%B0%E8%B5%B0%E7%9C%8B%E7%9C%8B/"/>
+      <category term="走走看看" scheme="https://sevennight.cc/categories/%E8%B5%B0%E8%B5%B0%E7%9C%8B%E7%9C%8B/"/>
     
     
-      <category term="Hexo" scheme="http://sevennight.cc/tags/Hexo/"/>
+      <category term="Hexo" scheme="https://sevennight.cc/tags/Hexo/"/>
     
   </entry>
   
   <entry>
     <title>Integer与int的种种比较</title>
-    <link href="http://sevennight.cc/2016/09/16/integer_and_int_compare.html"/>
-    <id>http://sevennight.cc/2016/09/16/integer_and_int_compare.html</id>
+    <link href="https://sevennight.cc/2016/09/16/integer_and_int_compare.html"/>
+    <id>https://sevennight.cc/2016/09/16/integer_and_int_compare.html</id>
     <published>2016-09-15T18:28:01.000Z</published>
     <updated>2019-01-01T04:09:41.348Z</updated>
     
@@ -57,17 +109,17 @@
     
     </summary>
     
-      <category term="后台开发" scheme="http://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
+      <category term="后台开发" scheme="https://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
     
     
-      <category term="java" scheme="http://sevennight.cc/tags/java/"/>
+      <category term="java" scheme="https://sevennight.cc/tags/java/"/>
     
   </entry>
   
   <entry>
     <title>理解clone()方法如何使用</title>
-    <link href="http://sevennight.cc/2016/09/12/understand_clone_use.html"/>
-    <id>http://sevennight.cc/2016/09/12/understand_clone_use.html</id>
+    <link href="https://sevennight.cc/2016/09/12/understand_clone_use.html"/>
+    <id>https://sevennight.cc/2016/09/12/understand_clone_use.html</id>
     <published>2016-09-12T08:42:01.000Z</published>
     <updated>2019-01-01T04:09:41.359Z</updated>
     
@@ -80,17 +132,17 @@
     
     </summary>
     
-      <category term="后台开发" scheme="http://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
+      <category term="后台开发" scheme="https://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
     
     
-      <category term="java" scheme="http://sevennight.cc/tags/java/"/>
+      <category term="java" scheme="https://sevennight.cc/tags/java/"/>
     
   </entry>
   
   <entry>
     <title>将静态文件缓存到html5的localStorage，给网站加速</title>
-    <link href="http://sevennight.cc/2016/07/30/localStorage_css_and_js.html"/>
-    <id>http://sevennight.cc/2016/07/30/localStorage_css_and_js.html</id>
+    <link href="https://sevennight.cc/2016/07/30/localStorage_css_and_js.html"/>
+    <id>https://sevennight.cc/2016/07/30/localStorage_css_and_js.html</id>
     <published>2016-07-30T03:06:00.000Z</published>
     <updated>2019-01-01T04:09:41.357Z</updated>
     
@@ -115,19 +167,19 @@
     
     </summary>
     
-      <category term="前端开发" scheme="http://sevennight.cc/categories/%E5%89%8D%E7%AB%AF%E5%BC%80%E5%8F%91/"/>
+      <category term="前端开发" scheme="https://sevennight.cc/categories/%E5%89%8D%E7%AB%AF%E5%BC%80%E5%8F%91/"/>
     
     
-      <category term="javascript" scheme="http://sevennight.cc/tags/javascript/"/>
+      <category term="javascript" scheme="https://sevennight.cc/tags/javascript/"/>
     
-      <category term="html5" scheme="http://sevennight.cc/tags/html5/"/>
+      <category term="html5" scheme="https://sevennight.cc/tags/html5/"/>
     
   </entry>
   
   <entry>
     <title>使用token实现在有效期内APP自动登录功能</title>
-    <link href="http://sevennight.cc/2016/07/19/auto_login_impl.html"/>
-    <id>http://sevennight.cc/2016/07/19/auto_login_impl.html</id>
+    <link href="https://sevennight.cc/2016/07/19/auto_login_impl.html"/>
+    <id>https://sevennight.cc/2016/07/19/auto_login_impl.html</id>
     <published>2016-07-19T09:20:35.000Z</published>
     <updated>2019-01-01T04:09:41.342Z</updated>
     
@@ -142,17 +194,17 @@
     
     </summary>
     
-      <category term="学习笔记" scheme="http://sevennight.cc/categories/%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0/"/>
+      <category term="学习笔记" scheme="https://sevennight.cc/categories/%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0/"/>
     
     
-      <category term="程序设计" scheme="http://sevennight.cc/tags/%E7%A8%8B%E5%BA%8F%E8%AE%BE%E8%AE%A1/"/>
+      <category term="程序设计" scheme="https://sevennight.cc/tags/%E7%A8%8B%E5%BA%8F%E8%AE%BE%E8%AE%A1/"/>
     
   </entry>
   
   <entry>
     <title>Java设计模式之 - 单例模式</title>
-    <link href="http://sevennight.cc/2015/11/12/java_design_pattern_singleton.html"/>
-    <id>http://sevennight.cc/2015/11/12/java_design_pattern_singleton.html</id>
+    <link href="https://sevennight.cc/2015/11/12/java_design_pattern_singleton.html"/>
+    <id>https://sevennight.cc/2015/11/12/java_design_pattern_singleton.html</id>
     <published>2015-11-12T09:43:01.000Z</published>
     <updated>2019-01-01T04:09:41.350Z</updated>
     
@@ -171,19 +223,19 @@
     
     </summary>
     
-      <category term="后台开发" scheme="http://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
+      <category term="后台开发" scheme="https://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
     
     
-      <category term="java" scheme="http://sevennight.cc/tags/java/"/>
+      <category term="java" scheme="https://sevennight.cc/tags/java/"/>
     
-      <category term="设计模式" scheme="http://sevennight.cc/tags/%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F/"/>
+      <category term="设计模式" scheme="https://sevennight.cc/tags/%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F/"/>
     
   </entry>
   
   <entry>
     <title>构造器Constructor是否可被Override？</title>
-    <link href="http://sevennight.cc/2015/11/01/constructor_whether_can_override.html"/>
-    <id>http://sevennight.cc/2015/11/01/constructor_whether_can_override.html</id>
+    <link href="https://sevennight.cc/2015/11/01/constructor_whether_can_override.html"/>
+    <id>https://sevennight.cc/2015/11/01/constructor_whether_can_override.html</id>
     <published>2015-10-31T17:03:01.000Z</published>
     <updated>2019-01-01T04:09:41.344Z</updated>
     
@@ -196,17 +248,17 @@
     
     </summary>
     
-      <category term="后台开发" scheme="http://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
+      <category term="后台开发" scheme="https://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
     
     
-      <category term="java" scheme="http://sevennight.cc/tags/java/"/>
+      <category term="java" scheme="https://sevennight.cc/tags/java/"/>
     
   </entry>
   
   <entry>
     <title>Java三大特性之多态</title>
-    <link href="http://sevennight.cc/2014/10/25/java_polymorphism_understand.html"/>
-    <id>http://sevennight.cc/2014/10/25/java_polymorphism_understand.html</id>
+    <link href="https://sevennight.cc/2014/10/25/java_polymorphism_understand.html"/>
+    <id>https://sevennight.cc/2014/10/25/java_polymorphism_understand.html</id>
     <published>2014-10-25T04:30:01.000Z</published>
     <updated>2019-01-01T04:09:41.355Z</updated>
     
@@ -222,17 +274,17 @@
     
     </summary>
     
-      <category term="后台开发" scheme="http://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
+      <category term="后台开发" scheme="https://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
     
     
-      <category term="java" scheme="http://sevennight.cc/tags/java/"/>
+      <category term="java" scheme="https://sevennight.cc/tags/java/"/>
     
   </entry>
   
   <entry>
     <title>Java三大特性之封装</title>
-    <link href="http://sevennight.cc/2014/10/24/java_encapsulation_understand.html"/>
-    <id>http://sevennight.cc/2014/10/24/java_encapsulation_understand.html</id>
+    <link href="https://sevennight.cc/2014/10/24/java_encapsulation_understand.html"/>
+    <id>https://sevennight.cc/2014/10/24/java_encapsulation_understand.html</id>
     <published>2014-10-24T08:42:01.000Z</published>
     <updated>2019-01-01T04:09:41.351Z</updated>
     
@@ -245,17 +297,17 @@
     
     </summary>
     
-      <category term="后台开发" scheme="http://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
+      <category term="后台开发" scheme="https://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
     
     
-      <category term="java" scheme="http://sevennight.cc/tags/java/"/>
+      <category term="java" scheme="https://sevennight.cc/tags/java/"/>
     
   </entry>
   
   <entry>
     <title>Java三大特性之继承</title>
-    <link href="http://sevennight.cc/2014/10/24/java_extends_understand.html"/>
-    <id>http://sevennight.cc/2014/10/24/java_extends_understand.html</id>
+    <link href="https://sevennight.cc/2014/10/24/java_extends_understand.html"/>
+    <id>https://sevennight.cc/2014/10/24/java_extends_understand.html</id>
     <published>2014-10-23T17:30:01.000Z</published>
     <updated>2019-01-01T04:09:41.353Z</updated>
     
@@ -271,10 +323,10 @@
     
     </summary>
     
-      <category term="后台开发" scheme="http://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
+      <category term="后台开发" scheme="https://sevennight.cc/categories/%E5%90%8E%E5%8F%B0%E5%BC%80%E5%8F%91/"/>
     
     
-      <category term="java" scheme="http://sevennight.cc/tags/java/"/>
+      <category term="java" scheme="https://sevennight.cc/tags/java/"/>
     
   </entry>
   
